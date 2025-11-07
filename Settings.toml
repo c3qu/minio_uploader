@@ -1,0 +1,15 @@
+# Minio/S3 Server Endpoint URL.
+# For example: "http://127.0.0.1:9000" or "https://s3.amazonaws.com"
+endpoint = "http://your-minio-server:9000"
+
+# Your S3 Access Key
+access_key = "YOUR_ACCESS_KEY"
+
+# Your S3 Secret Key
+secret_key = "YOUR_SECRET_KEY"
+
+# The name of the bucket to upload files to.
+bucket = "your-bucket-name"
+
+# The region of your bucket. For Minio, you can often just use "us-east-1".
+region = "us-east-1"
