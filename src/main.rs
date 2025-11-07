@@ -11,6 +11,8 @@ use minio::s3::builders::ObjectContent;
 use minio::s3::client::ClientBuilder;
 use minio::s3::creds::StaticProvider;
 use minio::s3::http::BaseUrl;
+use arboard::Clipboard;
+use urlencoding::encode;
 
 #[derive(Debug, Deserialize)]
 struct Settings {
@@ -91,6 +93,25 @@ async fn run() -> Result<()> {
         .put_object_content(&settings.bucket, file_name, content)
         .send()
         .await?;
+
+    // Build object URL and copy to clipboard (best-effort)
+    let mut endpoint = settings.endpoint.trim().to_string();
+    if endpoint.ends_with('/') {
+        endpoint.pop();
+    }
+    let object_url = format!(
+        "{}/{}/{}",
+        endpoint,
+        &settings.bucket,
+        encode(file_name)
+    );
+    match Clipboard::new().and_then(|mut c| c.set_text(object_url.clone())) {
+        Ok(_) => {}
+        Err(e) => {
+            // Don't fail the upload if clipboard fails; show a dialog instead
+            show_error_dialog(&format!("Uploaded but failed to copy to clipboard: {}\nURL: {}", e, object_url));
+        }
+    }
 
     Ok(())
 }
