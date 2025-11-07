@@ -1,3 +1,4 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use anyhow::Result;
 use config::{Config, File};
 use native_dialog::{MessageDialog, MessageType};
@@ -13,6 +14,8 @@ use minio::s3::creds::StaticProvider;
 use minio::s3::http::BaseUrl;
 use arboard::Clipboard;
 use urlencoding::encode;
+#[cfg(windows)]
+use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
 #[derive(Debug, Deserialize)]
 struct Settings {
@@ -52,6 +55,14 @@ fn show_error_dialog(message: &str) {
 }
 
 async fn run() -> Result<()> {
+    #[cfg(windows)]
+    {
+        if let Err(e) = ensure_context_menu_registered() {
+            // Non-fatal; show dialog to inform the user
+            show_error_dialog(&format!("Failed to register context menu: {:?}", e));
+        }
+    }
+
     let settings = Settings::new()?;
 
     let args: Vec<String> = env::args().collect();
@@ -112,6 +123,34 @@ async fn run() -> Result<()> {
             show_error_dialog(&format!("Uploaded but failed to copy to clipboard: {}\nURL: {}", e, object_url));
         }
     }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn ensure_context_menu_registered() -> Result<()> {
+    // Create HKCU\Software\Classes\*\shell\MinIO Uploader\command
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let base_path = "Software\\Classes\\*\\shell\\MinIO Uploader";
+    let command_path = format!("{}\\command", base_path);
+
+    // If command key exists, assume already registered
+    if hkcu.open_subkey(&command_path).is_ok() {
+        return Ok(());
+    }
+
+    let exe = env::current_exe()?;
+    let exe_str = exe.display().to_string();
+
+    // Create main key
+    let (key, _) = hkcu.create_subkey(base_path)?;
+    key.set_value("", &"Upload to MinIO")?;
+    key.set_value("Icon", &exe_str)?;
+
+    // Create command key with quoted path and %1
+    let (cmd_key, _) = hkcu.create_subkey(command_path)?;
+    let command = format!("\"{}\" \"%1\"", exe_str);
+    cmd_key.set_value("", &command)?;
 
     Ok(())
 }
