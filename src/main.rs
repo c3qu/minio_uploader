@@ -54,7 +54,33 @@ fn show_error_dialog(message: &str) {
         .unwrap();
 }
 
+fn show_info_dialog(message: &str) {
+    MessageDialog::new()
+        .set_title("Minio Uploader")
+        .set_text(message)
+        .set_type(MessageType::Info)
+        .show_alert()
+        .unwrap();
+}
+
 async fn run() -> Result<()> {
+    // Parse args first, in case we need to uninstall without requiring Settings.toml
+    let args: Vec<String> = env::args().collect();
+
+    #[cfg(windows)]
+    if args.iter().any(|a| a.eq_ignore_ascii_case("--uninstall") || a.eq_ignore_ascii_case("/uninstall")) {
+        match remove_context_menu_registration() {
+            Ok(_) => {
+                show_info_dialog("已移除右键菜单 (Current User)。");
+                return Ok(());
+            }
+            Err(e) => {
+                show_error_dialog(&format!("移除右键菜单失败: {:?}", e));
+                return Err(e);
+            }
+        }
+    }
+
     #[cfg(windows)]
     {
         if let Err(e) = ensure_context_menu_registered() {
@@ -65,7 +91,6 @@ async fn run() -> Result<()> {
 
     let settings = Settings::new()?;
 
-    let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         let exe_name = args.get(0).map_or("minio_uploader.exe", |s| s.as_str());
         let msg = format!("No file path provided.\n\nUsage: Drag a file onto {} or use the context menu.", exe_name);
@@ -100,12 +125,12 @@ async fn run() -> Result<()> {
     file.read_to_end(&mut buffer).await?;
 
     let content = ObjectContent::from(buffer);
-    client
+    let result = client
         .put_object_content(&settings.bucket, file_name, content)
         .send()
-        .await?;
+        .await;
 
-    // Build object URL and copy to clipboard (best-effort)
+    // Build object URL
     let mut endpoint = settings.endpoint.trim().to_string();
     if endpoint.ends_with('/') {
         endpoint.pop();
@@ -116,15 +141,23 @@ async fn run() -> Result<()> {
         &settings.bucket,
         encode(file_name)
     );
-    match Clipboard::new().and_then(|mut c| c.set_text(object_url.clone())) {
-        Ok(_) => {}
+    match result {
+        Ok(_) => {
+            let mut copied = true;
+            if let Err(e) = Clipboard::new().and_then(|mut c| c.set_text(object_url.clone())) {
+                copied = false;
+                show_error_dialog(&format!("上传成功，但复制到剪切板失败: {}\nURL: {}", e, object_url));
+            }
+            if copied {
+                show_info_dialog(&format!("上传成功，链接已复制到剪切板:\n{}", object_url));
+            }
+            Ok(())
+        }
         Err(e) => {
-            // Don't fail the upload if clipboard fails; show a dialog instead
-            show_error_dialog(&format!("Uploaded but failed to copy to clipboard: {}\nURL: {}", e, object_url));
+            show_error_dialog(&format!("上传失败: {}", e));
+            Err(anyhow::anyhow!(e))
         }
     }
-
-    Ok(())
 }
 
 #[cfg(windows)]
@@ -152,6 +185,17 @@ fn ensure_context_menu_registered() -> Result<()> {
     let command = format!("\"{}\" \"%1\"", exe_str);
     cmd_key.set_value("", &command)?;
 
+    Ok(())
+}
+
+#[cfg(windows)]
+fn remove_context_menu_registration() -> Result<()> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let base_path = "Software\\Classes\\*\\shell\\MinIO Uploader";
+    if hkcu.open_subkey(base_path).is_err() {
+        return Ok(());
+    }
+    hkcu.delete_subkey_all(base_path)?;
     Ok(())
 }
 
