@@ -1,10 +1,10 @@
 [package]
 name = "minio_uploader"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 description = "A simple Windows context menu tool to upload files to a Minio server."
 license = "MIT"
-repository = "https://github.com/your-username/your-repo"
+repository = "https://github.com/c3qu/minio_uploader.git"
 readme = "README.md"
 
 [dependencies]
@@ -18,3 +18,4 @@ url = "2.5"
 arboard = "3"
 urlencoding = "2"
 winreg = { version = "0.52", features = ["transactions"] }
+dirs = "5"

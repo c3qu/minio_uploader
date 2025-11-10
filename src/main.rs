@@ -27,17 +27,53 @@ struct Settings {
 
 impl Settings {
     pub fn new() -> Result<Self> {
-        let mut config_path = env::current_exe()?;
-        config_path.pop();
-        config_path.push("Settings.toml");
+        // Priority 1: %APPDATA%/MinioUploader/Settings.toml
+        let appdata_config = dirs::data_dir()
+            .map(|mut path| {
+                path.push("MinioUploader");
+                path.push("Settings.toml");
+                path
+            })
+            .filter(|p| p.exists());
 
-        if !config_path.exists() {
-            show_error_dialog(&format!(
-                "Configuration file not found. Please create 'Settings.toml' in the same directory as the executable.\n\nExpected path: {}",
-                config_path.display()
-            ));
-            return Err(anyhow::anyhow!("Config file not found"));
-        }
+        // Priority 2: Executable directory/Settings.toml
+        let exe_dir_config = env::current_exe()
+            .ok()
+            .map(|mut path| {
+                path.pop();
+                path.push("Settings.toml");
+                path
+            })
+            .filter(|p| p.exists());
+
+        // Try appdata first, then exe directory
+        let config_path = appdata_config
+            .or(exe_dir_config)
+            .ok_or_else(|| {
+                let appdata_path = dirs::data_dir()
+                    .map(|mut p| {
+                        p.push("MinioUploader");
+                        p.push("Settings.toml");
+                        p.display().to_string()
+                    })
+                    .unwrap_or_else(|| "%APPDATA%\\MinioUploader\\Settings.toml".to_string());
+                
+                let exe_path = env::current_exe()
+                    .ok()
+                    .map(|mut p| {
+                        p.pop();
+                        p.push("Settings.toml");
+                        p.display().to_string()
+                    })
+                    .unwrap_or_else(|| "<executable_dir>\\Settings.toml".to_string());
+
+                let error_msg = format!(
+                    "Configuration file not found. Please create 'Settings.toml' in one of the following locations:\n\n1. {} (recommended)\n2. {}",
+                    appdata_path, exe_path
+                );
+                show_error_dialog(&error_msg);
+                anyhow::anyhow!("Config file not found")
+            })?;
 
         let builder = Config::builder().add_source(File::from(config_path.as_path()));
         let settings = builder.build()?.try_deserialize()?;
