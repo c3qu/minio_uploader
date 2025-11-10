@@ -1,9 +1,0 @@
-Windows Registry Editor Version 5.00
-
-[HKEY_CLASSES_ROOT\*\shell\UploadToMinio]
-@="Upload to Minio"
-"Icon"="imageres.dll,7"
-
-[HKEY_CLASSES_ROOT\*\shell\UploadToMinio\command]
-@="\"C:\\Users\\c3qu\\Desktop\\upload\\minio_uploader\\target\\release\\minio_uploader.exe\" \"%1\""
-
